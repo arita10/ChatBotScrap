@@ -1,0 +1,7 @@
+# Price Intelligence Chatbot — Backend Dependencies
+flask>=3.0
+flask-cors>=4.0
+openai>=1.30
+supabase>=2.4
+python-dotenv>=1.0
+gunicorn>=22.0        # production server (Linux/Mac only — use waitress on Windows)
