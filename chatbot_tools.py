@@ -37,6 +37,112 @@ def _days_ago(n: int) -> str:
 # Tool functions
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Recipe → ingredient mapping (Turkish keywords that match DB product names)
+# ─────────────────────────────────────────────────────────────────────────────
+
+RECIPE_INGREDIENTS: dict[str, list[str]] = {
+    # Baked goods
+    "kek":          ["un", "yumurta", "süt", "tereyağ", "şeker", "kabartma"],
+    "pasta":        ["un", "yumurta", "süt", "tereyağ", "şeker", "krema", "çikolata"],
+    "ekmek":        ["un", "maya", "tuz", "yağ"],
+    "kurabiye":     ["un", "yumurta", "tereyağ", "şeker", "vanilya"],
+    "börek":        ["yufka", "yumurta", "peynir", "maydanoz", "sıvıyağ"],
+    "pizza":        ["un", "maya", "domates", "peynir", "zeytin"],
+    # Main dishes
+    "tavuk":        ["tavuk", "domates", "soğan", "sarımsak", "biber", "yağ"],
+    "köfte":        ["kıyma", "soğan", "yumurta", "ekmek", "tuz", "karabiber"],
+    "makarna":      ["makarna", "domates", "peynir", "zeytinyağ", "sarımsak"],
+    "pilav":        ["pirinç", "tereyağ", "tuz", "su"],
+    "mercimek":     ["mercimek", "soğan", "domates", "havuç", "yağ"],
+    "omlet":        ["yumurta", "süt", "tereyağ", "tuz", "kaşar"],
+    # Desserts
+    "sütlaç":       ["süt", "pirinç", "şeker", "vanilya"],
+    "muhallebi":    ["süt", "nişasta", "şeker", "vanilya"],
+    "baklava":      ["yufka", "ceviz", "tereyağ", "şeker"],
+    # Drinks / breakfast
+    "smoothie":     ["süt", "muz", "yoğurt"],
+    "kahvaltı":     ["yumurta", "peynir", "ekmek", "domates", "salatalık", "zeytin"],
+    # English aliases
+    "cake":         ["un", "yumurta", "süt", "tereyağ", "şeker", "kabartma"],
+    "bread":        ["un", "maya", "tuz"],
+    "omelette":     ["yumurta", "süt", "tereyağ"],
+    "pasta dish":   ["makarna", "domates", "peynir"],
+    "rice":         ["pirinç", "tereyağ"],
+    "cookies":      ["un", "yumurta", "tereyağ", "şeker"],
+    "baklava":      ["yufka", "ceviz", "tereyağ", "şeker"],
+}
+
+
+def suggest_for_recipe(supabase: Client, recipe: str) -> dict:
+    """
+    Given a recipe/dish name, find its ingredients and look up the cheapest
+    available price for each ingredient in the DB.
+    Returns: { recipe, ingredients: [ {ingredient, found, product_name, market, price} ] }
+    """
+    key = recipe.lower().strip()
+
+    # Find the best matching recipe key
+    ingredients: list[str] = []
+    for rkey, ings in RECIPE_INGREDIENTS.items():
+        if rkey in key or key in rkey:
+            ingredients = ings
+            break
+
+    if not ingredients:
+        return {"recipe": recipe, "found": False, "ingredients": []}
+
+    results = []
+    for ing in ingredients:
+        # Get cheapest available product matching this ingredient
+        try:
+            date_resp = (
+                supabase.table("price_history")
+                .select("scraped_date")
+                .ilike("product_name", f"%{ing}%")
+                .order("scraped_date", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not date_resp.data:
+                results.append({"ingredient": ing, "found": False})
+                continue
+
+            latest_date = date_resp.data[0]["scraped_date"]
+            resp = (
+                supabase.table("price_history")
+                .select("product_name, market_name, current_price")
+                .ilike("product_name", f"%{ing}%")
+                .eq("scraped_date", latest_date)
+                .order("current_price", desc=False)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                row = resp.data[0]
+                results.append({
+                    "ingredient": ing,
+                    "found": True,
+                    "product_name": row["product_name"],
+                    "market_name": row["market_name"],
+                    "price": row["current_price"],
+                })
+            else:
+                results.append({"ingredient": ing, "found": False})
+        except Exception as exc:
+            logger.error(f"suggest_for_recipe error for {ing}: {exc}")
+            results.append({"ingredient": ing, "found": False})
+
+    found_count = sum(1 for r in results if r.get("found"))
+    return {
+        "recipe": recipe,
+        "found": True,
+        "ingredient_count": len(ingredients),
+        "found_in_db": found_count,
+        "ingredients": results,
+    }
+
+
 def search_products(supabase: Client, keyword: str, limit: int = 20) -> list[dict]:
     """
     Search the products table by name using ILIKE.

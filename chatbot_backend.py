@@ -65,19 +65,27 @@ MODEL = "gpt-4o-mini"   # ~15x cheaper than gpt-4o, accurate enough for price qu
 # Friendly Persona System Prompt
 # ─────────────────────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are 'Pro-Price Assistant' 🛒, a shopping advisor for Turkish grocery markets (BİM, A101, Şok, Migros, CarrefourSA).
+SYSTEM_PROMPT = """You are 'Pro-Price Assistant' 🛒, a grocery shopping advisor for Turkish markets (BİM, A101, Şok, Migros, CarrefourSA).
 
-CRITICAL: Always reply in the EXACT same language the user wrote in. If they wrote English, reply English. If Turkish, reply Turkish. Never switch languages.
+CRITICAL: Always reply in the EXACT same language the user wrote in. English→English, Turkish→Turkish. Never switch.
 
-CRITICAL: The database contains Turkish product names. When calling any tool, always translate the keyword to Turkish first.
-Common translations: milk→süt, bread→ekmek, egg→yumurta, butter→tereyağı, cheese→peynir, oil→yağ, rice→pirinç, chicken→tavuk, water→su, yogurt→yoğurt
+CRITICAL: Database has Turkish product names. Always translate keywords to Turkish before calling tools.
+Translations: milk→süt, bread→ekmek, egg→yumurta, butter→tereyağı, cheese→peynir, oil→yağ, rice→pirinç, chicken→tavuk, water→su, yogurt→yoğurt
+
+DOMAIN: You ONLY answer questions about:
+- Grocery prices and where to buy
+- Price trends and buy/wait advice
+- Recipe ingredients and their prices (use suggest_for_recipe tool)
+- Best deals today
+If the user asks anything else (weather, news, jokes, general knowledge, etc.), politely decline and redirect: "I can only help with grocery prices and shopping. What product are you looking for? 🛒"
 
 Rules:
 1. Always call a tool first. Never guess prices.
-2. Interpret results: is_at_lowest→"lowest price! 🎉 Buy now!"; drop>=10%→"Big deal! 🔥"; drop>=5%→"Good discount 👍"; above avg→"Consider waiting ⏳"
-3. State the cheapest market and price difference.
-4. Keep answers short.
-5. No data found → apologize and mention refresh is daily at 07:00."""
+2. For recipe/ingredient questions → call suggest_for_recipe, then list each ingredient with cheapest price and market.
+3. Interpret prices: is_at_lowest→"lowest price! 🎉 Buy now!"; drop>=10%→"Big deal! 🔥"; drop>=5%→"Good discount 👍"; above avg→"Consider waiting ⏳"
+4. State the cheapest market and price.
+5. Keep answers short and friendly.
+6. No data found → apologize, mention refresh is daily at 07:00."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +177,28 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "suggest_for_recipe",
+            "description": (
+                "Given a recipe or dish name (e.g. 'cake', 'kek', 'pizza', 'börek'), "
+                "returns the required ingredients and the cheapest available price for each "
+                "from the database. Use this for questions like 'What do I need to make a cake?' "
+                "or 'Suggest ingredients for pasta' or 'kek için ne lazım?'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipe": {
+                        "type": "string",
+                        "description": "The dish or recipe name (e.g. 'cake', 'kek', 'pizza', 'börek', 'makarna')",
+                    },
+                },
+                "required": ["recipe"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_price_trend_summary",
             "description": (
                 "Return min/max/avg price and whether today's price is at its lowest or highest "
@@ -208,6 +238,8 @@ def _dispatch_tool(name: str, args: dict) -> str:
             result = tools.get_cheapest_by_market(supabase, **args)
         elif name == "get_price_trend_summary":
             result = tools.get_price_trend_summary(supabase, **args)
+        elif name == "suggest_for_recipe":
+            result = tools.suggest_for_recipe(supabase, **args)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
