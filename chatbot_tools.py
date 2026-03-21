@@ -228,7 +228,7 @@ def get_best_deals(supabase: Client, limit: int = 10) -> list[dict]:
     """
     try:
         resp = (
-            supabase.table("sp_v_best_deals")
+            supabase.table("v_best_deals")
             .select("product_name, market_name, current_price, previous_price, price_drop_pct, product_url")
             .limit(limit)
             .execute()
