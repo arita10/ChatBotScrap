@@ -408,7 +408,7 @@ def clear_history():
 def debug():
     """Raw Supabase test — bypasses LLM, shows exactly what the DB returns."""
     try:
-        resp = supabase.table("price_history").select("product_name, market_name, current_price, scraped_date").limit(5).execute()
+        resp = supabase.table("sp_price_history").select("product_name, market_name, current_price, scraped_date").limit(5).execute()
         return jsonify({
             "row_count": len(resp.data),
             "rows": resp.data,

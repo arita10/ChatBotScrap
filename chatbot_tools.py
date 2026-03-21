@@ -97,7 +97,7 @@ def suggest_for_recipe(supabase: Client, recipe: str) -> dict:
         # Get cheapest available product matching this ingredient
         try:
             date_resp = (
-                supabase.table("price_history")
+                supabase.table("sp_price_history")
                 .select("scraped_date")
                 .ilike("product_name", f"%{ing}%")
                 .order("scraped_date", desc=True)
@@ -110,7 +110,7 @@ def suggest_for_recipe(supabase: Client, recipe: str) -> dict:
 
             latest_date = date_resp.data[0]["scraped_date"]
             resp = (
-                supabase.table("price_history")
+                supabase.table("sp_price_history")
                 .select("product_name, market_name, current_price")
                 .ilike("product_name", f"%{ing}%")
                 .eq("scraped_date", latest_date)
@@ -150,7 +150,7 @@ def search_products(supabase: Client, keyword: str, limit: int = 20) -> list[dic
     """
     try:
         resp = (
-            supabase.table("products")
+            supabase.table("sp_products")
             .select("product_name, market_name, latest_price, product_url")
             .ilike("product_name", f"%{keyword}%")
             .order("latest_price", desc=False)
@@ -172,7 +172,7 @@ def get_current_prices(supabase: Client, keyword: str) -> list[dict]:
     try:
         # Step 1: find the most recent scraped_date for this keyword
         date_resp = (
-            supabase.table("price_history")
+            supabase.table("sp_price_history")
             .select("scraped_date")
             .ilike("product_name", f"%{keyword}%")
             .order("scraped_date", desc=True)
@@ -185,7 +185,7 @@ def get_current_prices(supabase: Client, keyword: str) -> list[dict]:
 
         # Step 2: fetch all records for that date
         resp = (
-            supabase.table("price_history")
+            supabase.table("sp_price_history")
             .select("product_name, market_name, current_price, previous_price, price_drop_pct, scraped_date, product_url")
             .ilike("product_name", f"%{keyword}%")
             .eq("scraped_date", latest_date)
@@ -207,7 +207,7 @@ def get_price_history(supabase: Client, keyword: str, days: int = 14) -> list[di
     try:
         cutoff = _days_ago(days)
         resp = (
-            supabase.table("price_history")
+            supabase.table("sp_price_history")
             .select("product_name, market_name, current_price, previous_price, price_drop_pct, scraped_date")
             .ilike("product_name", f"%{keyword}%")
             .gte("scraped_date", cutoff)
@@ -228,7 +228,7 @@ def get_best_deals(supabase: Client, limit: int = 10) -> list[dict]:
     """
     try:
         resp = (
-            supabase.table("v_best_deals")
+            supabase.table("sp_v_best_deals")
             .select("product_name, market_name, current_price, previous_price, price_drop_pct, product_url")
             .limit(limit)
             .execute()
@@ -241,7 +241,7 @@ def get_best_deals(supabase: Client, limit: int = 10) -> list[dict]:
     # Fallback: use the most recent available date
     try:
         date_resp = (
-            supabase.table("price_history")
+            supabase.table("sp_price_history")
             .select("scraped_date")
             .order("scraped_date", desc=True)
             .limit(1)
@@ -249,7 +249,7 @@ def get_best_deals(supabase: Client, limit: int = 10) -> list[dict]:
         )
         latest_date = date_resp.data[0]["scraped_date"] if date_resp.data else _today()
         resp = (
-            supabase.table("price_history")
+            supabase.table("sp_price_history")
             .select("product_name, market_name, current_price, previous_price, price_drop_pct, product_url")
             .eq("scraped_date", latest_date)
             .gte("price_drop_pct", 5)
